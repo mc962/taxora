@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgres:18
+    container_name: taxora-db
+    environment:
+      POSTGRES_USER: taxora
+      POSTGRES_PASSWORD: ${DATABASE__PASSWORD}
+      POSTGRES_DB: taxora
+    volumes:
+      - taxora-db:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"  # non-default host port — avoids clashing with kita's existing Postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taxora"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+    container_name: taxora-migrate
+    env_file: taxora.env
+    environment:
+      DATABASE__HOST: db
+      DATABASE__PORT: "5432"
+    command: alembic upgrade head
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+    container_name: taxora-worker
+    env_file: taxora.env
+    environment:
+      DATABASE__HOST: db
+      DATABASE__PORT: "5432"
+    command: python -m taxora.worker
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+    container_name: taxora-api
+    env_file: taxora.env
+    environment:
+      DATABASE__HOST: db
+      DATABASE__PORT: "5432"
+    command: uvicorn taxora.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  taxora-db:

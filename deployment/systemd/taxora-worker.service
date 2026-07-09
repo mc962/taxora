@@ -1,0 +1,26 @@
+[Unit]
+Description=Taxora Temporal Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/taxora
+ExecStart=/opt/taxora/.venv/bin/python -m taxora.worker
+EnvironmentFile=/etc/taxora.env
+
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/taxora /var/log/taxora
+NoNewPrivileges=true
+
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=5
+
+User=taxora
+Group=taxora
+
+[Install]
+WantedBy=multi-user.target

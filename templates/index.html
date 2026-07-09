@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Taxora{% endblock %}
+
+{% block content %}
+<h2>Load GBIF occurrence data</h2>
+
+<div class="card">
+    <h3>New ingest run</h3>
+    <form id="ingest-form">
+        <label for="country_code">Country code (ISO 3166-1 alpha-2)</label>
+        <input type="text" id="country_code" name="country_code" placeholder="IS" maxlength="2" required>
+
+        <label>Date range (optional — leave blank for all dates)</label>
+        <div class="field-row">
+            <div>
+                <label for="start_date" style="margin-top: 0;">From</label>
+                <input type="date" id="start_date" name="start_date">
+            </div>
+            <div>
+                <label for="end_date" style="margin-top: 0;">To</label>
+                <input type="date" id="end_date" name="end_date">
+            </div>
+        </div>
+
+        <button type="submit" class="btn" id="submit-btn">Start ingest</button>
+    </form>
+
+    <div id="result"></div>
+</div>
+
+<div class="card">
+    <h3>Check an existing run</h3>
+    <form id="status-form">
+        <label for="workflow_id">Workflow ID</label>
+        <input type="text" id="workflow_id" name="workflow_id" placeholder="ingest-IS-..." required>
+        <button type="submit" class="btn">Check status</button>
+    </form>
+    <div id="status-result"></div>
+</div>
+
+<script>
+function badgeClass(status) {
+    if (status === "COMPLETED") return "badge-completed";
+    if (status === "RUNNING") return "badge-running";
+    if (status === "FAILED" || status === "TERMINATED" || status === "TIMED_OUT") return "badge-failed";
+    return "badge-muted";
+}
+
+function renderStatus(container, data) {
+    let html = `<p><code>${data.workflow_id}</code> &nbsp; <span class="badge ${badgeClass(data.status)}">${data.status}</span></p>`;
+    if (data.result) {
+        html += `<p style="margin-top: 0.5rem; color: var(--color-text-muted); font-size: 0.9em;">
+            ${data.result.total} records across ${data.result.pages} page(s)
+        </p>`;
+    }
+    container.innerHTML = html;
+}
+
+async function pollStatus(workflowId, container) {
+    const resp = await fetch(`/status/${workflowId}`);
+    if (!resp.ok) {
+        container.innerHTML = `<p style="color: var(--color-error);">Workflow not found</p>`;
+        return;
+    }
+    const data = await resp.json();
+    renderStatus(container, data);
+    if (data.status === "RUNNING") {
+        setTimeout(() => pollStatus(workflowId, container), 2000);
+    }
+}
+
+document.getElementById("ingest-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const submitBtn = document.getElementById("submit-btn");
+    const result = document.getElementById("result");
+    submitBtn.disabled = true;
+    result.innerHTML = "<p>Starting…</p>";
+
+    const body = {
+        country_code: document.getElementById("country_code").value.toUpperCase(),
+    };
+    const startDate = document.getElementById("start_date").value;
+    const endDate = document.getElementById("end_date").value;
+    if (startDate) body.start_date = startDate;
+    if (endDate) body.end_date = endDate;
+
+    try {
+        const resp = await fetch("/ingest", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            result.innerHTML = `<p style="color: var(--color-error);">${err.detail || "Failed to start"}</p>`;
+            return;
+        }
+        const data = await resp.json();
+        pollStatus(data.workflow_id, result);
+    } finally {
+        submitBtn.disabled = false;
+    }
+});
+
+document.getElementById("status-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const workflowId = document.getElementById("workflow_id").value;
+    const container = document.getElementById("status-result");
+    container.innerHTML = "<p>Checking…</p>";
+    pollStatus(workflowId, container);
+});
+</script>
+{% endblock %}

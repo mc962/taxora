@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Taxora{% endblock %}</title>
+    <style>
+        :root {
+            --color-bg: #111827;
+            --color-bg-secondary: #1f2937;
+            --color-text: #f3f4f6;
+            --color-text-muted: #9ca3af;
+            --color-border: #374151;
+            --color-accent: #3b82f6;
+            --color-error: #ef4444;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--color-bg);
+            color: var(--color-text);
+            min-height: 100vh;
+        }
+
+        nav {
+            background: var(--color-bg-secondary);
+            border-bottom: 1px solid var(--color-border);
+            padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            height: 3.25rem;
+        }
+
+        .nav-brand {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--color-text);
+            text-decoration: none;
+            letter-spacing: 0.03em;
+        }
+
+        .nav-right {
+            margin-left: auto;
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .nav-right a {
+            color: var(--color-text-muted);
+            font-size: 0.85em;
+            text-decoration: none;
+        }
+
+        .nav-right a:hover { color: var(--color-text); }
+
+        main {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 1.5rem; }
+        h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; }
+
+        label {
+            display: block;
+            font-size: 0.85em;
+            color: var(--color-text-muted);
+            margin-bottom: 0.3rem;
+            margin-top: 1rem;
+        }
+
+        input[type="text"], input[type="date"] {
+            width: 100%;
+            padding: 0.5rem 0.65rem;
+            border-radius: 0.35rem;
+            border: 1px solid var(--color-border);
+            background: var(--color-bg);
+            color: var(--color-text);
+            font-size: 0.95em;
+        }
+
+        .field-row {
+            display: flex;
+            gap: 1rem;
+        }
+        .field-row > div { flex: 1; }
+
+        .btn {
+            display: inline-block;
+            padding: 0.5rem 1.1rem;
+            border: none;
+            border-radius: 0.35rem;
+            font-size: 0.9em;
+            font-weight: 600;
+            cursor: pointer;
+            background: #1d4ed8;
+            color: #fff;
+            transition: background 0.15s;
+            margin-top: 1.25rem;
+        }
+        .btn:hover { background: #2563eb; }
+        .btn:disabled { background: #374151; cursor: not-allowed; }
+
+        .card {
+            background: var(--color-bg-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: 0.5rem;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.55rem;
+            border-radius: 0.25rem;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        .badge-running { background: #b45309; color: #fff; }
+        .badge-completed { background: #15803d; color: #fff; }
+        .badge-failed { background: #b91c1c; color: #fff; }
+        .badge-muted { background: #374151; color: #9ca3af; }
+
+        code {
+            font-family: ui-monospace, monospace;
+            font-size: 0.85em;
+            background: var(--color-bg);
+            padding: 0.1em 0.35em;
+            border-radius: 0.2rem;
+        }
+
+        #result { margin-top: 1.5rem; }
+        #result:empty { display: none; }
+
+        footer {
+            margin-top: 3rem;
+            padding: 1rem 2rem;
+            border-top: 1px solid var(--color-border);
+            text-align: center;
+            font-size: 0.8em;
+            color: var(--color-text-muted);
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+<nav>
+    <a class="nav-brand" href="/">Taxora</a>
+    <div class="nav-right">
+        <a href="/docs">API docs ↗</a>
+        <a href="/health">Health ↗</a>
+    </div>
+</nav>
+
+<main>
+    {% block content %}{% endblock %}
+</main>
+
+<footer>
+    Taxora v{{ settings.application_version }}
+</footer>
+
+</body>
+</html>

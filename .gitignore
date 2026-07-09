@@ -1,0 +1,23 @@
+# IDEs
+.idea/
+*.iml
+.vscode/
+
+# Package managers
+.venv/
+
+# Environment configuration
+*.env
+
+# Databases
+*.db
+
+# Python
+__pycache__/
+*.pyc
+
+# Tests
+.coverage
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
