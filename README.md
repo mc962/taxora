@@ -70,16 +70,21 @@ worker. Point `DATABASE__*` at a Postgres instance you manage yourself.
 
 ## Auth
 
-Mutating endpoints (`POST/PATCH /ingest*`) require a Bearer API key — same Argon2-hashed,
-prefix-lookup scheme as `aeron`/`praxeum`. Read-only endpoints (`/status`, `/records/count`,
-`/health`) don't. Generate a key once the DB is migrated:
+Mutating endpoints (`POST/PATCH /ingest*`) accept either a Bearer API key or a logged-in browser
+session cookie — same Argon2-hashed, prefix-lookup key scheme as `aeron`/`praxeum`, plus a
+DB-backed session table (also mirroring `aeron`) for the UI's own login. Read-only endpoints
+(`/status`, `/records/count`, `/health`) require neither. Generate a key once the DB is migrated:
 
 ```bash
 python -m taxora.cli create-key --name admin --superuser
 ```
 
-The browser UI (`/`) isn't gated by this at all — it's expected to sit behind Authelia at the
-Caddy layer instead (see `homelab/manager`); the API key is for scripts/the Schedule/curl.
+The browser UI (`/`) is gated by a superuser session: visiting it without a valid `taxora_session`
+cookie redirects to `/login`, where a superuser API key exchanges for a session cookie (24h TTL,
+signed via `SESSION_SECRET`, cleaned up hourly by a background task). This sits *underneath*
+Authelia at the Caddy layer (see `homelab/manager`) — Authelia gates the domain, this gates the
+app itself so the UI's own `fetch()` calls to `/ingest*` don't need to know about API keys at all.
+Scripts/the Schedule/curl still use the Bearer key directly.
 
 ## Usage
 

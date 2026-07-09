@@ -2,7 +2,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from constants import PROJECT_ROOT
@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     # Database (Postgres only)
     echo_sql: bool = False
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+
+    # Auth — session signing key for the browser UI login (separate from Bearer API keys)
+    session_secret: SecretStr = SecretStr("change-me-in-production")
 
     @property
     def application_version(self) -> str:

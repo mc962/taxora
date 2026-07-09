@@ -23,7 +23,7 @@ from taxora.models import (
     WorkflowStatusResponse,
 )
 from taxora.temporal_client import get_client
-from taxora.web.dependencies.auth import ApiKeyDependency
+from taxora.web.dependencies.auth import SessionOrApiKeyDependency
 from taxora.workflows import (
     BatchIngestParams,
     BatchIngestWorkflow,
@@ -36,7 +36,9 @@ router = APIRouter(tags=["ingest"])
 DatabaseSessionDependency = Annotated[AsyncSession, Depends(get_db_session)]
 
 
-def _build_event_date_range(start_date: date | None, end_date: date | None) -> str | None:
+def _build_event_date_range(
+    start_date: date | None, end_date: date | None
+) -> str | None:
     if start_date and end_date:
         return f"{start_date.isoformat()},{end_date.isoformat()}"
     if start_date:
@@ -45,14 +47,18 @@ def _build_event_date_range(start_date: date | None, end_date: date | None) -> s
 
 
 @router.post("/ingest", response_model=IngestResponse)
-async def start_ingest(request: IngestRequest, _api_key: ApiKeyDependency) -> IngestResponse:
+async def start_ingest(
+    request: IngestRequest, _api_key: SessionOrApiKeyDependency
+) -> IngestResponse:
     client = get_client()
     workflow_id = f"ingest-{request.country_code}-{uuid4()}"
     event_date_range = _build_event_date_range(request.start_date, request.end_date)
 
     await client.start_workflow(
         IngestOccurrencesWorkflow.run,
-        IngestParams(country_code=request.country_code, event_date_range=event_date_range),
+        IngestParams(
+            country_code=request.country_code, event_date_range=event_date_range
+        ),
         id=workflow_id,
         task_queue=application_settings.temporal_task_queue,
         # Not indexed/queryable like a real search attribute would be (those need a one-time
@@ -65,7 +71,7 @@ async def start_ingest(request: IngestRequest, _api_key: ApiKeyDependency) -> In
 
 @router.post("/ingest/batch", response_model=BatchIngestResponse)
 async def start_batch_ingest(
-    request: BatchIngestRequest, _api_key: ApiKeyDependency
+    request: BatchIngestRequest, _api_key: SessionOrApiKeyDependency
 ) -> BatchIngestResponse:
     """Start one BatchIngestWorkflow, which fans out a child IngestOccurrencesWorkflow per
     country and runs them concurrently."""
@@ -75,7 +81,9 @@ async def start_batch_ingest(
 
     await client.start_workflow(
         BatchIngestWorkflow.run,
-        BatchIngestParams(country_codes=request.country_codes, event_date_range=event_date_range),
+        BatchIngestParams(
+            country_codes=request.country_codes, event_date_range=event_date_range
+        ),
         id=workflow_id,
         task_queue=application_settings.temporal_task_queue,
         memo={"country_codes": ",".join(request.country_codes)},
@@ -122,7 +130,9 @@ async def get_progress(workflow_id: str) -> ProgressResponse:
 
 
 @router.post("/ingest/{workflow_id}/pause")
-async def pause_ingest(workflow_id: str, _api_key: ApiKeyDependency) -> dict[str, str]:
+async def pause_ingest(
+    workflow_id: str, _api_key: SessionOrApiKeyDependency
+) -> dict[str, str]:
     client = get_client()
     handle = client.get_workflow_handle(workflow_id)
     await handle.signal(IngestOccurrencesWorkflow.pause)
@@ -130,7 +140,9 @@ async def pause_ingest(workflow_id: str, _api_key: ApiKeyDependency) -> dict[str
 
 
 @router.post("/ingest/{workflow_id}/resume")
-async def resume_ingest(workflow_id: str, _api_key: ApiKeyDependency) -> dict[str, str]:
+async def resume_ingest(
+    workflow_id: str, _api_key: SessionOrApiKeyDependency
+) -> dict[str, str]:
     client = get_client()
     handle = client.get_workflow_handle(workflow_id)
     await handle.signal(IngestOccurrencesWorkflow.resume)
@@ -139,7 +151,9 @@ async def resume_ingest(workflow_id: str, _api_key: ApiKeyDependency) -> dict[st
 
 @router.patch("/ingest/{workflow_id}/page-size", response_model=PageSizeUpdateResponse)
 async def update_page_size(
-    workflow_id: str, request: PageSizeUpdateRequest, _api_key: ApiKeyDependency
+    workflow_id: str,
+    request: PageSizeUpdateRequest,
+    _api_key: SessionOrApiKeyDependency,
 ) -> PageSizeUpdateResponse:
     """Update (not signal) — synchronous, validated, and returns the new value directly."""
     client = get_client()

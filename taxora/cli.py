@@ -82,7 +82,9 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     key_parser = subparsers.add_parser("create-key", help="Create a new API key")
-    key_parser.add_argument("--name", required=True, help="Descriptive name for the key")
+    key_parser.add_argument(
+        "--name", required=True, help="Descriptive name for the key"
+    )
     key_parser.add_argument(
         "--superuser", action="store_true", help="Grant superuser privileges"
     )
@@ -91,7 +93,10 @@ def main() -> None:
         "create-schedule", help="Create the recurring BatchIngestWorkflow schedule"
     )
     create_parser.add_argument(
-        "--countries", nargs="+", required=True, help="Country codes to refresh, e.g. IS VA"
+        "--countries",
+        nargs="+",
+        required=True,
+        help="Country codes to refresh, e.g. IS VA",
     )
     create_parser.add_argument(
         "--interval-hours", type=int, default=24, help="Refresh interval in hours"

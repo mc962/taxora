@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Login — Taxora{% endblock %}
+
+{% block content %}
+<div style="max-width: 420px; margin: 4rem auto;">
+    <h2 style="margin-bottom: 1.5rem;">Sign in</h2>
+
+    {% if error %}
+    <div class="alert alert-error" style="margin-bottom: 1rem;">{{ error }}</div>
+    {% endif %}
+
+    <div class="card">
+        <form method="post" action="/login">
+            <label style="margin-top: 0;">API Key</label>
+            <input type="password" name="api_key" placeholder="txra_..." autofocus required>
+            <button type="submit" class="btn" style="width: 100%;">Sign in</button>
+        </form>
+    </div>
+
+    <p style="margin-top: 1rem; font-size: 0.85em; color: var(--color-text-muted); text-align: center;">
+        Superuser API key required. Create one with:
+        <code>python -m taxora.cli create-key --name admin --superuser</code>
+    </p>
+</div>
+{% endblock %}

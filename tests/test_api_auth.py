@@ -34,7 +34,9 @@ async def unauthed_client():
 
 
 def _mock_verify_key(active: bool = True) -> AsyncMock:
-    key = ApiKey(id=1, name="test-key", key_prefix="txra_tes", key_hash="", is_active=active)
+    key = ApiKey(
+        id=1, name="test-key", key_prefix="txra_tes", key_hash="", is_active=active
+    )
     return AsyncMock(return_value=key if active else None)
 
 

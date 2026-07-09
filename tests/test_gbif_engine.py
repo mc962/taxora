@@ -7,7 +7,9 @@ from taxora.http_client import aiohttp_client
 
 
 class _FakeResponse:
-    def __init__(self, status: int, json_body: dict | None = None, text_body: str = "") -> None:
+    def __init__(
+        self, status: int, json_body: dict | None = None, text_body: str = ""
+    ) -> None:
         self.status = status
         self._json_body = json_body
         self._text_body = text_body
@@ -40,7 +42,14 @@ def fake_session():
 
 async def test_fetch_page_success(fake_session):
     response = _FakeResponse(
-        200, json_body={"offset": 0, "limit": 2, "endOfRecords": True, "count": 1, "results": [{"key": 1}]}
+        200,
+        json_body={
+            "offset": 0,
+            "limit": 2,
+            "endOfRecords": True,
+            "count": 1,
+            "results": [{"key": 1}],
+        },
     )
     fake_session.get = MagicMock(return_value=_FakeGetContextManager(response))
 

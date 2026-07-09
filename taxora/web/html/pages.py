@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from taxora.configuration.settings import application_settings
+from taxora.web.dependencies.auth import SuperuserSessionDependency
 
 _TEMPLATES_DIR = Path(__file__).parent.parent.parent.parent / "templates"
 
@@ -15,7 +16,7 @@ templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 
 
 @router.get("/", response_class=HTMLResponse)
-async def index(request: Request) -> Response:
+async def index(request: Request, _session: SuperuserSessionDependency) -> Response:
     """Simple form for starting an ingest run and checking on existing ones."""
     return templates.TemplateResponse(
         request,

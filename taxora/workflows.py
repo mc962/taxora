@@ -21,7 +21,9 @@ CONTINUE_AS_NEW_EVERY_N_PAGES = 20
 @dataclass
 class IngestParams:
     country_code: str
-    event_date_range: str | None = None  # e.g. "2020-01-01,2020-12-31" — see GBIF eventDate docs
+    event_date_range: str | None = (
+        None  # e.g. "2020-01-01,2020-12-31" — see GBIF eventDate docs
+    )
     page_size: int = 300
     max_offset: int = 100_000
     # Carried across continue-as-new runs — not set by callers starting a fresh ingest.
@@ -152,12 +154,17 @@ class IngestOccurrencesWorkflow:
         if not (1 <= new_size <= 300):
             # Rejected before being written to history at all (sync validators can do this;
             # the update handler itself always gets recorded once accepted).
-            raise ValueError("page_size must be between 1 and 300 — GBIF's own page-size cap")
+            raise ValueError(
+                "page_size must be between 1 and 300 — GBIF's own page-size cap"
+            )
 
     @workflow.query
     def get_progress(self) -> Progress:
         return Progress(
-            offset=self._offset, total=self._total, pages=self._pages, paused=self._paused
+            offset=self._offset,
+            total=self._total,
+            pages=self._pages,
+            paused=self._paused,
         )
 
 
@@ -182,7 +189,9 @@ class BatchIngestWorkflow:
             *(
                 workflow.execute_child_workflow(
                     IngestOccurrencesWorkflow.run,
-                    IngestParams(country_code=cc, event_date_range=params.event_date_range),
+                    IngestParams(
+                        country_code=cc, event_date_range=params.event_date_range
+                    ),
                     id=f"{parent_id}-{cc}",
                 )
                 for cc in params.country_codes

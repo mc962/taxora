@@ -16,5 +16,7 @@ async def connect() -> Client:
 
 def get_client() -> Client:
     if _client is None:
-        raise RuntimeError("Temporal client not connected — call connect() during startup")
+        raise RuntimeError(
+            "Temporal client not connected — call connect() during startup"
+        )
     return _client

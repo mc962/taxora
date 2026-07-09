@@ -126,6 +126,14 @@
         .badge-failed { background: #b91c1c; color: #fff; }
         .badge-muted { background: #374151; color: #9ca3af; }
 
+        .alert {
+            padding: 0.75rem 1rem;
+            border-radius: 0.35rem;
+            margin-bottom: 1rem;
+            font-size: 0.9em;
+        }
+        .alert-error { background: #7f1d1d; border: 1px solid #991b1b; color: #fecaca; }
+
         code {
             font-family: ui-monospace, monospace;
             font-size: 0.85em;
@@ -155,6 +163,11 @@
     <div class="nav-right">
         <a href="/docs">API docs ↗</a>
         <a href="/health">Health ↗</a>
+        {% if request.cookies.get("taxora_session") %}
+        <form method="post" action="/logout" style="margin: 0;">
+            <button type="submit" class="btn btn-sm" style="margin-top: 0; padding: 0.25rem 0.6rem; font-size: 0.8em;">Logout</button>
+        </form>
+        {% endif %}
     </div>
 </nav>
 

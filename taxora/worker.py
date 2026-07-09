@@ -5,7 +5,11 @@ from concurrent.futures import ThreadPoolExecutor
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from taxora.activities import fetch_gbif_page, normalize_country_code, persist_occurrences
+from taxora.activities import (
+    fetch_gbif_page,
+    normalize_country_code,
+    persist_occurrences,
+)
 from taxora.configuration.settings import application_settings
 from taxora.http_client import aiohttp_client
 from taxora.workflows import BatchIngestWorkflow, IngestOccurrencesWorkflow
@@ -33,7 +37,8 @@ async def main() -> None:
             activity_executor=ThreadPoolExecutor(5),
         )
         logger.info(
-            "Starting worker on task queue '%s'", application_settings.temporal_task_queue
+            "Starting worker on task queue '%s'",
+            application_settings.temporal_task_queue,
         )
         await worker.run()
     finally:
