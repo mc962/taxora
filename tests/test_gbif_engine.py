@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from taxora.engines import gbif_engine
-from taxora.http_client import aiohttp_client
+from taxora.http_client import aiohttp_tcp_client
 
 
 class _FakeResponse:
@@ -36,7 +36,7 @@ class _FakeGetContextManager:
 def fake_session():
     """Stand in for the shared aiohttp session so gbif_engine doesn't need a real one."""
     session = MagicMock()
-    with patch.object(aiohttp_client, "_session", session):
+    with patch.object(aiohttp_tcp_client, "_session", session):
         yield session
 
 

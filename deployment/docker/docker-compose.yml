@@ -1,71 +1,136 @@
+# Self-contained demo stack: app + Postgres + Temporal (+ UI) + mock GBIF + workers.
+#
+#   cd deployment/docker
+#   cp taxora.env.example ../../.dev.env      # then set DATABASE__PASSWORD
+#   docker compose --env-file ../../.dev.env up -d --build
+#   docker compose --env-file ../../.dev.env up -d --scale worker=3   # more workers
+#
+# Every service talks to the others by service name (db, temporal, mock-gbif) on the
+# compose network — close to how ECS service discovery wires tasks together.
+name: taxora
+
+x-app: &app
+  build:
+    context: ../..
+    dockerfile: deployment/docker/Dockerfile
+  image: taxora:demo
+  env_file: ${ENV_FILE:-../../.dev.env}
+  restart: unless-stopped
+
 services:
+  # --- Taxora's own database --------------------------------------------------------
   db:
     image: postgres:18
-    container_name: taxora-db
     environment:
-      POSTGRES_USER: taxora
-      POSTGRES_PASSWORD: ${DATABASE__PASSWORD}
-      POSTGRES_DB: taxora
+      POSTGRES_USER: ${DATABASE__USER:?set via --env-file}
+      POSTGRES_PASSWORD: ${DATABASE__PASSWORD:?set via --env-file}
+      POSTGRES_DB: ${DATABASE__DATABASE:?set via --env-file}
     volumes:
-      - taxora-db:/var/lib/postgresql/data
+      - taxora-db:/var/lib/postgresql  # PG18 images keep data in a versioned subdir
     ports:
-      - "5433:5432"  # non-default host port — avoids clashing with kita's existing Postgres
+      - "5433:5432"  # host access (psql/IDE); avoids clashing with a local Postgres
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U taxora"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
-    restart: unless-stopped
 
   migrate:
-    build:
-      context: ../..
-      dockerfile: deployment/docker/Dockerfile
-    container_name: taxora-migrate
-    env_file: taxora.env
-    environment:
-      DATABASE__HOST: db
-      DATABASE__PORT: "5432"
+    <<: *app
+    restart: "no"
     command: alembic upgrade head
     depends_on:
       db:
         condition: service_healthy
 
-  worker:
-    build:
-      context: ../..
-      dockerfile: deployment/docker/Dockerfile
-    container_name: taxora-worker
-    env_file: taxora.env
+  # --- Temporal (its own Postgres, independent of the app's data) ---------------------
+  temporal-db:
+    image: postgres:18
     environment:
-      DATABASE__HOST: db
-      DATABASE__PORT: "5432"
-    command: python -m taxora.worker
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    volumes:
+      - temporal-db:/var/lib/postgresql  # PG18 layout (versioned subdir)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  temporal:
+    image: temporalio/auto-setup:1.29.1  # runs schema setup, then the server
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: temporal-db
+    ports:
+      - "7233:7233"  # gRPC — so a worker/CLI on the host can reach it too
     depends_on:
-      db:
+      temporal-db:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "tctl --address $$(hostname -i):7233 cluster health | grep -q SERVING"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
     restart: unless-stopped
 
-  api:
-    build:
-      context: ../..
-      dockerfile: deployment/docker/Dockerfile
-    container_name: taxora-api
-    env_file: taxora.env
+  temporal-ui:
+    image: temporalio/ui:2.40.1
     environment:
-      DATABASE__HOST: db
-      DATABASE__PORT: "5432"
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "8080:8080"
+    depends_on:
+      temporal:
+        condition: service_healthy
+
+  # --- Synthetic GBIF (see README "Demo at scale") -------------------------------------
+  mock-gbif:
+    <<: *app
+    env_file: []  # no app config needed — configured purely by the vars below
+    command: uvicorn tools.mock_gbif.app:app --host 0.0.0.0 --port 9000
+    environment:
+      DATASET_SEED: ${DATASET_SEED:-1}
+      MOCK_COUNTS: ${MOCK_COUNTS:-US=2000000,DE=500000}
+      ENFORCE_OFFSET_CAP: ${ENFORCE_OFFSET_CAP:-true}
+      LATENCY_MS: ${LATENCY_MS:-250,500}
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-0}
+      FAIL_RATE: ${FAIL_RATE:-0}
+    ports:
+      - "9000:9000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:9000/v1/occurrence/search?country=IS&limit=0')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- Taxora ---------------------------------------------------------------------------
+  worker:  # no container_name, so `--scale worker=N` works
+    <<: *app
+    command: python -m taxora.worker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_healthy
+      mock-gbif:
+        condition: service_healthy
+
+  api:
+    <<: *app
     command: uvicorn taxora.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
     depends_on:
-      db:
-        condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    restart: unless-stopped
+      temporal:
+        condition: service_healthy
 
 volumes:
   taxora-db:
+  temporal-db:

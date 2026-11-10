@@ -17,7 +17,7 @@ from taxora.configuration.settings import application_settings
 from taxora.data.database.connection import sessionmanager
 from taxora.data.repository.session_repository import run_periodic_cleanup
 from taxora.temporal_client import connect as connect_temporal
-from taxora.web.api import health, ingest
+from taxora.web.api import health, ingest, schedules
 from taxora.web.dependencies.auth import UnauthenticatedRedirect
 from taxora.web.html import auth as auth_html
 from taxora.web.html import pages
@@ -57,5 +57,6 @@ async def unauthenticated_redirect_handler(
 
 app.include_router(health.router)
 app.include_router(ingest.router)
+app.include_router(schedules.router)
 app.include_router(pages.router)
 app.include_router(auth_html.router)

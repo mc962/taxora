@@ -67,3 +67,20 @@ async def test_records_count(api_client):
     response = await api_client.get("/records/count?country_code=IS")
     assert response.status_code == 200
     assert response.json() == {"country_code": "IS", "count": 0}
+
+
+async def test_start_partitioned_ingest(api_client):
+    mock_client = MagicMock()
+    mock_client.start_workflow = AsyncMock()
+
+    with patch.object(temporal_client, "_client", mock_client):
+        response = await api_client.post(
+            "/ingest/partitioned",
+            json={"country_code": "US", "start_date": "2010-01-01"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["workflow_id"].startswith("partitioned-ingest-US-")
+    _, args, _ = mock_client.start_workflow.mock_calls[0]
+    assert args[1].start_date == "2010-01-01"
+    assert args[1].end_date is None

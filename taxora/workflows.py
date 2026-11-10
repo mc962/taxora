@@ -1,17 +1,21 @@
 import asyncio
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import date, timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ChildWorkflowError
 
 with workflow.unsafe.imports_passed_through():
     from taxora.activities import (
+        CountInput,
         FetchPageInput,
+        count_gbif_occurrences,
         fetch_gbif_page,
         normalize_country_code,
         persist_occurrences,
     )
+    from taxora.partitioning import Window, split_window, window_to_range
 
 # Deliberately low so a single-country run demonstrates continue-as-new even though GBIF's
 # own 100k/300-per-page cap (~334 pages) wouldn't otherwise come close to needing it.
@@ -30,6 +34,7 @@ class IngestParams:
     starting_offset: int = 0
     accumulated_total: int = 0
     accumulated_pages: int = 0
+    paused: bool = False
 
 
 @dataclass
@@ -64,6 +69,7 @@ class IngestOccurrencesWorkflow:
         self._offset = params.starting_offset
         self._total = params.accumulated_total
         self._pages = params.accumulated_pages
+        self._paused = params.paused
 
         # Local activity: no I/O, so it skips the task-queue round trip a regular activity
         # takes and doesn't write a full activity task to workflow history.
@@ -122,6 +128,7 @@ class IngestOccurrencesWorkflow:
                         starting_offset=self._offset,
                         accumulated_total=self._total,
                         accumulated_pages=self._pages,
+                        paused=self._paused,
                     )
                 )
 
@@ -198,3 +205,139 @@ class BatchIngestWorkflow:
             )
         )
         return list(results)
+
+
+# Keep leaf windows comfortably below GBIF's 100k offset cap. The page loop in
+# IngestOccurrencesWorkflow requests offsets in page-size steps, so a window right at the cap
+# would make its last page (offset + limit > cap) get rejected; 95k leaves a safety margin.
+DEFAULT_MAX_WINDOW_RECORDS = 95_000
+
+
+@dataclass
+class PartitionedIngestParams:
+    country_code: str
+    start_date: str = "2000-01-01"  # ISO dates, inclusive
+    end_date: str | None = None  # defaults to the workflow's "today"
+    max_window_records: int = DEFAULT_MAX_WINDOW_RECORDS
+    max_concurrent_children: int = 8
+
+
+@workflow.defn
+class PartitionedIngestWorkflow:
+    """Ingest a country too big for one paginated walk, by partitioning it into date windows.
+
+    GBIF refuses offset + limit beyond ~100k, so a multi-million-record country can't be
+    paged through in one go. Instead:
+
+    1. **Plan** — ask GBIF for the record count of a date window (a cheap ``limit=0`` count
+       activity). If it fits under ``max_window_records`` it becomes a leaf; if not, split it
+       in half and count both halves. Repeat level by level (all counts at a level run in
+       parallel). The amount of work isn't known up front — it's discovered by the plan.
+    2. **Fan out** — run one child ``IngestOccurrencesWorkflow`` per leaf window, at most
+       ``max_concurrent_children`` at a time. Each child keeps its own history, retries and
+       continue-as-new, and one failing window doesn't take down its siblings.
+
+    Re-running is idempotent: children upsert by GBIF key.
+    """
+
+    def __init__(self) -> None:
+        self._phase = "planning"
+        self._leaves: list[Window] = []
+        self._done = 0
+        self._total = 0
+        self._failed: list[str] = []
+
+    @workflow.run
+    async def run(self, params: PartitionedIngestParams) -> dict:
+        country_code = await workflow.execute_local_activity(
+            normalize_country_code,
+            params.country_code,
+            start_to_close_timeout=timedelta(seconds=5),
+        )
+        end = (
+            date.fromisoformat(params.end_date)
+            if params.end_date
+            else workflow.now().date()
+        )
+        start = date.fromisoformat(params.start_date)
+
+        self._leaves = await self._plan(country_code, (start, end), params)
+
+        self._phase = "ingesting"
+        semaphore = asyncio.Semaphore(params.max_concurrent_children)
+        parent_id = workflow.info().workflow_id
+
+        async def ingest_leaf(window: Window) -> dict | None:
+            async with semaphore:
+                try:
+                    result: dict = await workflow.execute_child_workflow(
+                        IngestOccurrencesWorkflow.run,
+                        IngestParams(
+                            country_code=country_code,
+                            event_date_range=window_to_range(window),
+                        ),
+                        id=f"{parent_id}-{window[0].isoformat()}_{window[1].isoformat()}",
+                    )
+                except ChildWorkflowError:
+                    self._failed.append(window_to_range(window))
+                    return None
+                self._done += 1
+                self._total += result["total"]
+                return result
+
+        results = await asyncio.gather(*(ingest_leaf(w) for w in self._leaves))
+        self._phase = "done"
+        return {
+            "country_code": country_code,
+            "windows": len(self._leaves),
+            "total": self._total,
+            "failed_windows": self._failed,
+            "child_results": [r for r in results if r],
+        }
+
+    async def _plan(
+        self, country_code: str, root: Window, params: PartitionedIngestParams
+    ) -> list[Window]:
+        """Breadth-first window splitting. Returns the non-empty leaf windows."""
+        leaves: list[Window] = []
+        level = [root]
+        while level:
+            counts = await asyncio.gather(
+                *(
+                    workflow.execute_activity(
+                        count_gbif_occurrences,
+                        CountInput(country_code, window_to_range(w)),
+                        start_to_close_timeout=timedelta(seconds=30),
+                        retry_policy=RetryPolicy(
+                            maximum_attempts=5, maximum_interval=timedelta(seconds=30)
+                        ),
+                    )
+                    for w in level
+                )
+            )
+            next_level: list[Window] = []
+            for window, count in zip(level, counts):
+                if count == 0:
+                    continue
+                halves = (
+                    split_window(window) if count > params.max_window_records else None
+                )
+                if halves is None:
+                    # Fits (or it's a single day that can't be split further — if that
+                    # exceeds the cap, the child will ingest what GBIF will serve).
+                    leaves.append(window)
+                else:
+                    next_level.extend(halves)
+            level = next_level
+        leaves.sort()
+        return leaves
+
+    @workflow.query
+    def get_plan_progress(self) -> dict:
+        return {
+            "phase": self._phase,
+            "windows": len(self._leaves),
+            "windows_done": self._done,
+            "total": self._total,
+            "failed_windows": self._failed,
+        }

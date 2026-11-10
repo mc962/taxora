@@ -18,6 +18,8 @@ from taxora.models import (
     IngestResponse,
     PageSizeUpdateRequest,
     PageSizeUpdateResponse,
+    PartitionedIngestRequest,
+    PartitionedIngestResponse,
     ProgressResponse,
     RecordsCountResponse,
     WorkflowStatusResponse,
@@ -29,6 +31,8 @@ from taxora.workflows import (
     BatchIngestWorkflow,
     IngestOccurrencesWorkflow,
     IngestParams,
+    PartitionedIngestParams,
+    PartitionedIngestWorkflow,
 )
 
 router = APIRouter(tags=["ingest"])
@@ -90,6 +94,40 @@ async def start_batch_ingest(
     )
     child_ids = [f"{workflow_id}-{cc}" for cc in request.country_codes]
     return BatchIngestResponse(workflow_id=workflow_id, child_workflow_ids=child_ids)
+
+
+@router.post("/ingest/partitioned", response_model=PartitionedIngestResponse)
+async def start_partitioned_ingest(
+    request: PartitionedIngestRequest, _api_key: SessionOrApiKeyDependency
+) -> PartitionedIngestResponse:
+    """For countries too big for one paginated walk (GBIF caps offset at ~100k): plans date
+    windows by record count, then fans out one child ingest per window.
+    NOTE: This is a limit of the external API, and this is an example of how to work around that issue.
+    The API has a limit of ~100k records of the resultset it allows simple LIMIT + OFFSET clauses to be applied to.
+    In order to extract more than this, more complex windowing is needed (e.g. filter by date range and then
+    paginate off of each window). So if we know the total results for a particular query should be <100k for this particular
+    API then simple pagination is better, but if it's greater than that then we need this kind of windowing and more
+    complex partition management.."""
+    client = get_client()
+    workflow_id = f"partitioned-ingest-{request.country_code}-{uuid4()}"
+    params = PartitionedIngestParams(
+        country_code=request.country_code,
+        max_window_records=request.max_window_records,
+        max_concurrent_children=request.max_concurrent_children,
+    )
+    if request.start_date:
+        params.start_date = request.start_date.isoformat()
+    if request.end_date:
+        params.end_date = request.end_date.isoformat()
+
+    await client.start_workflow(
+        PartitionedIngestWorkflow.run,
+        params,
+        id=workflow_id,
+        task_queue=application_settings.temporal_task_queue,
+        memo={"country_code": request.country_code},
+    )
+    return PartitionedIngestResponse(workflow_id=workflow_id)
 
 
 @router.get("/status/{workflow_id}", response_model=WorkflowStatusResponse)

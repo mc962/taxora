@@ -72,6 +72,27 @@ async def fetch_gbif_page(page_input: FetchPageInput) -> dict:
     return {"results": trimmed_results, "endOfRecords": page.get("endOfRecords", True)}
 
 
+@dataclass
+class CountInput:
+    country_code: str
+    event_date_range: str
+
+
+@activity.defn
+async def count_gbif_occurrences(count_input: CountInput) -> int:
+    """How many records match a country + date window? One cheap ``limit=0`` request —
+    GBIF returns the ``count`` without any records. Used by the partitioning planner to
+    decide whether a window fits under the offset cap or needs splitting."""
+    page = await gbif_engine.fetch_page(
+        count_input.country_code,
+        0,
+        0,
+        base_url=application_settings.gbif_base_url,
+        event_date_range=count_input.event_date_range,
+    )
+    return int(page["count"])
+
+
 @activity.defn
 async def persist_occurrences(records: list[dict]) -> int:
     # A single page's batch is small enough to complete well within its timeout, so this

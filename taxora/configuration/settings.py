@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     # Temporal
     temporal_address: str = "temporal-internal.florence.place:7233"
     temporal_task_queue: str = "taxora-task-queue"
+    # Browser-facing URL of the Temporal Web UI (linked from the header; not used by the
+    # app itself). Defaults to the compose-published port.
+    temporal_ui_url: str = "http://localhost:8080"
 
     # GBIF
     gbif_base_url: str = "https://api.gbif.org/v1"

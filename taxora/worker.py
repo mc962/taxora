@@ -6,13 +6,18 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from taxora.activities import (
+    count_gbif_occurrences,
     fetch_gbif_page,
     normalize_country_code,
     persist_occurrences,
 )
 from taxora.configuration.settings import application_settings
-from taxora.http_client import aiohttp_client
-from taxora.workflows import BatchIngestWorkflow, IngestOccurrencesWorkflow
+from taxora.http_client import aiohttp_tcp_client
+from taxora.workflows import (
+    BatchIngestWorkflow,
+    IngestOccurrencesWorkflow,
+    PartitionedIngestWorkflow,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,13 +30,22 @@ async def main() -> None:
     logger.info("Connecting to Temporal at %s", application_settings.temporal_address)
     client = await Client.connect(application_settings.temporal_address)
 
-    await aiohttp_client.initialize()
+    await aiohttp_tcp_client.initialize()
     try:
         worker = Worker(
             client,
             task_queue=application_settings.temporal_task_queue,
-            workflows=[IngestOccurrencesWorkflow, BatchIngestWorkflow],
-            activities=[fetch_gbif_page, persist_occurrences, normalize_country_code],
+            workflows=[
+                IngestOccurrencesWorkflow,
+                BatchIngestWorkflow,
+                PartitionedIngestWorkflow,
+            ],
+            activities=[
+                fetch_gbif_page,
+                persist_occurrences,
+                normalize_country_code,
+                count_gbif_occurrences,
+            ],
             # normalize_country_code is a sync def (no I/O, run as a local activity), which
             # requires an executor to run on — the rest are async and don't use this pool.
             activity_executor=ThreadPoolExecutor(5),
@@ -42,7 +56,7 @@ async def main() -> None:
         )
         await worker.run()
     finally:
-        await aiohttp_client.close()
+        await aiohttp_tcp_client.close()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,14 @@
+# BuildKit applies <Dockerfile-name>.dockerignore (a plain .dockerignore next to the
+# Dockerfile is NOT used when the build context is elsewhere — here, the repo root).
+.git
+.idea
+.vscode
+.venv
+__pycache__
+*.pyc
+*.env
+*.db
+tests/
+.mypy_cache
+.ruff_cache
+.pytest_cache

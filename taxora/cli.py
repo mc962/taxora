@@ -4,10 +4,12 @@ Usage:
     python -m taxora.cli create-key --name admin --superuser
     python -m taxora.cli create-schedule --countries IS VA --interval-hours 24
     python -m taxora.cli delete-schedule
+    TAXORA_ALLOW_DATA_RESET=true python -m taxora.cli reset-data
 """
 
 import argparse
 import asyncio
+import os
 import sys
 from datetime import timedelta
 
@@ -77,6 +79,35 @@ async def _delete_schedule() -> None:
     print(f"\nDeleted schedule '{DAILY_SCHEDULE_ID}'.\n")
 
 
+async def _reset_data(assume_yes: bool) -> None:
+    """Truncate only the occurrences table (users/sessions/API keys and Temporal state are
+    untouched). RESTART IDENTITY is cheap insurance — occurrences.gbif_key is supplied by
+    GBIF and has no sequence, but any future identity column would be reset too.
+    """
+    from sqlalchemy import text
+
+    from taxora.data.database.connection import sessionmanager
+
+    if os.environ.get("TAXORA_ALLOW_DATA_RESET", "").lower() != "true":
+        print(
+            "Refusing: set TAXORA_ALLOW_DATA_RESET=true to confirm this is a demo DB."
+        )
+        sys.exit(1)
+
+    async with sessionmanager.connect() as conn:
+        count = (await conn.execute(text("SELECT count(*) FROM occurrences"))).scalar()
+    if not assume_yes:
+        answer = input(f"Delete all {count} rows from occurrences? [y/N] ")
+        if answer.strip().lower() != "y":
+            print("Aborted.")
+            return
+
+    async with sessionmanager.connect() as conn:
+        await conn.execute(text("TRUNCATE TABLE occurrences RESTART IDENTITY"))
+    await sessionmanager.close()
+    print(f"\nTruncated occurrences ({count} rows removed).\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="taxora.cli", description="Taxora admin CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -104,6 +135,11 @@ def main() -> None:
 
     subparsers.add_parser("delete-schedule", help="Delete the recurring schedule")
 
+    reset_parser = subparsers.add_parser(
+        "reset-data", help="Truncate the occurrences table (demo/testing only)"
+    )
+    reset_parser.add_argument("--yes", action="store_true", help="Skip confirmation")
+
     args = parser.parse_args()
 
     if args.command == "create-key":
@@ -112,6 +148,8 @@ def main() -> None:
         asyncio.run(_create_schedule(args.countries, args.interval_hours))
     elif args.command == "delete-schedule":
         asyncio.run(_delete_schedule())
+    elif args.command == "reset-data":
+        asyncio.run(_reset_data(args.yes))
     else:
         parser.print_help()
         sys.exit(1)

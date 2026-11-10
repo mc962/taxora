@@ -13,7 +13,7 @@ from typing import Any
 
 import aiohttp
 
-from taxora.http_client import aiohttp_client
+from taxora.http_client import aiohttp_tcp_client
 
 
 async def fetch_page(
@@ -46,7 +46,7 @@ async def fetch_page(
     if event_date_range:
         params["eventDate"] = event_date_range
 
-    session = aiohttp_client.client()
+    session = aiohttp_tcp_client.client()
     async with session.get(
         f"{base_url}/occurrence/search",
         params=params,
